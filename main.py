@@ -17,9 +17,7 @@ HTTP_HOST = '0.0.0.0'
 MESSAGE = {}
 
 
-
 class GoitFramework(BaseHTTPRequestHandler):
-
     def do_GET(self):
         route = urllib.parse.urlparse(self.path)
         print(route.query)
@@ -36,16 +34,15 @@ class GoitFramework(BaseHTTPRequestHandler):
                     self.send_html('error.html', 404)
 
     def do_POST(self):
-        data = self.rfile.read(int(self.headers['Content-Length']))
-        print(data)
-        data_parse = urllib.parse.unquote_plus(data.decode())
-        print(data_parse)
-        data_dict = {key: value for key, value in [el.split('=') for el in data_parse.split('&')]}
-        print(data_dict)
+        size = self.headers.get("Content-Length")
+        data = self.rfile.read(int(size))
+        client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        client_socket.sendto(data, (UDP_IP, UDP_PORT))
+        client_socket.close()
+        save_data(data)
         self.send_response(302)
         self.send_header('Location', '/')
         self.end_headers()
-
 
     def send_html(self, filename, status_code=200):
         self.send_response(status_code)
@@ -65,6 +62,7 @@ class GoitFramework(BaseHTTPRequestHandler):
         with open(filename, 'rb') as file:
             self.wfile.write(file.read())
 
+
 def save_data(data):
     try:
         parse_data = unquote_plus(data.decode())
@@ -83,21 +81,15 @@ def save_data(data):
         logging.error(f'OSError in save_data_from_form: {error}')
 
 
-
-def run_server(ip, port):
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    server = ip, port
-    sock.bind(server)
+def run_http_server(host, port):
+    address = (host, port)
+    http_server = HTTPServer(address, GoitFramework)
+    logging.info("Starting http")
     try:
-        while True:
-            msg, address = sock.recvfrom(1024)
-            logging.info(f"Socket receiver {address}: {msg}")
-            save_data(msg)
-
+        http_server.serve_forever()
     except KeyboardInterrupt:
-        print(f'Destroy server')
-    finally:
-        sock.close()
+        http_server.server_close()
+
 
 def run_client(ip, port):
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -114,11 +106,9 @@ def run_client(ip, port):
         server_socket.close()
 
 
-
-
-
 if __name__ == '__main__':
-    server = Thread(target=run_server, args=(HTTP_HOST, HTTP_PORT))
+    logging.basicConfig(level=logging.DEBUG, format="%(threadName)s%(message)s")
+    server = Thread(target=run_http_server, args=(HTTP_HOST, HTTP_PORT))
     server.start()
 
     server_socket = Thread(target=run_client, args=(UDP_IP, UDP_PORT))
